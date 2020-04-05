@@ -5,7 +5,6 @@
 *.obj
 *.d
 *.lo
-*.dylib
 *.exe
 config.log
 config.status
