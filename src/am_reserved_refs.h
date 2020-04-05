@@ -51,6 +51,7 @@ typedef enum {
     MT_am_oscillator_node,
     MT_am_spectrum_node,
     MT_am_capture_node,
+    MT_am_sunvox_node,
 
     MT_am_buffer_data_allocator,
     MT_am_buffer,

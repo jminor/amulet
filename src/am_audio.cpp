@@ -1,5 +1,17 @@
 #include "amulet.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <dlfcn.h>
+#include <signal.h>
+#include <math.h>
+#define SUNVOX_MAIN
+#include "../third_party/sunvox_dll/headers/sunvox.h"
+static float *sunvox_buffer = NULL;
+static int sunvox_buffer_size = 0;
+
 #define AM_AUDIO_NODE_FLAG_MARK             ((uint32_t)1)
 #define AM_AUDIO_NODE_FLAG_CHILDREN_DIRTY   ((uint32_t)2)
 #define AM_AUDIO_NODE_FLAG_PENDING_PAUSE    ((uint32_t)4)
@@ -776,6 +788,52 @@ bool am_capture_node::finished() {
     return false;
 }
 
+// Sunvox Node
+
+am_sunvox_node::am_sunvox_node()
+    : filename("")
+{
+    offset = 0;
+}
+
+void am_sunvox_node::sync_params() {
+}
+
+void am_sunvox_node::post_render(am_audio_context *context, int num_samples) {
+    offset += num_samples;
+}
+
+void am_sunvox_node::render_audio(am_audio_context *context, am_audio_bus *bus) {
+    int num_channels = bus->num_channels;
+    int num_samples = bus->num_samples;
+
+    if (num_samples > sunvox_buffer_size) {
+        num_samples = sunvox_buffer_size;
+        fprintf(stderr, "amulet audio buffer is bigger than sunvox audio buffer!\n");
+    }
+
+    // Note: we're using 'offset' to keep track of how many samples into the song
+    // we have progressed, but we need to convert from samples into sunvox's ticks
+    // via sv_get_ticks_per_second()
+    // Note: We could use Sunvox's internal timer sv_get_ticks() instead.
+    // Actually, it doesn't seem to matter what we pass in as 'ticks' even 0?!
+    uint32_t ticks = 0;
+    // if (am_conf_audio_sample_rate != sv_get_ticks_per_second()) {
+    //     ticks = (double)offset / (double)am_conf_audio_sample_rate * sv_get_ticks_per_second();
+    // }
+	sv_audio_callback( sunvox_buffer, num_samples, 0, ticks );
+
+    for (int i = 0; i < num_samples; i++) {
+        for (int c = 0; c < num_channels; c++) {
+            bus->channel_data[c][i] += sunvox_buffer[i*num_channels+c];
+        }
+    }
+}
+
+bool am_sunvox_node::finished() {
+    return false;
+}
+
 //-------------------------------------------------------------------------
 // Lua bindings.
 
@@ -1351,6 +1409,39 @@ static void register_capture_node_mt(lua_State *L) {
     am_register_metatable(L, "capture", MT_am_capture_node, MT_am_audio_node);
 }
 
+// Sunvox node lua bindings
+
+static int create_sunvox_node(lua_State *L) {
+    int nargs = am_check_nargs(L, 1);
+    am_sunvox_node *node = am_new_userdata(L, am_sunvox_node);
+    const char *filename = luaL_checkstring(L, 1);
+    node->filename = filename;
+
+	sv_open_slot( 0 );
+    int res = sv_load( 0, filename );
+	if( res != 0 ) {
+	    fprintf(stderr,  "sunvox load error %d: %s\n", res, filename);
+        return 0;
+    }
+
+    fprintf(stderr, "sunvox loaded file: %s\n", filename);
+    fprintf(stderr, "sunvox song name: %s\n", sv_get_song_name(0));
+
+	sv_volume( 0, 256 );
+	sv_play_from_beginning( 0 );
+
+    return 1;
+}
+
+static void register_sunvox_node_mt(lua_State *L) {
+    lua_newtable(L);
+    lua_pushcclosure(L, am_audio_node_index, 0);
+    lua_setfield(L, -2, "__index");
+    am_set_default_newindex_func(L);
+
+    am_register_metatable(L, "sunvox", MT_am_sunvox_node, MT_am_audio_node);
+}
+
 // Audio node lua bindings
 
 static int create_audio_node(lua_State *L) {
@@ -1774,12 +1865,32 @@ void am_uninterleave_audio(float* AM_RESTRICT dest, float* AM_RESTRICT src,
 //-------------------------------------------------------------------------
 // Module registration
 
+int am_setup_sunvox(int buffer_size, int num_channels, int sample_rate) {
+    if( sv_load_dll() ) {
+        fprintf(stderr, "failed to load sunvox module.");
+        return -1;
+    }
+    int flags = SV_INIT_FLAG_USER_AUDIO_CALLBACK | SV_INIT_FLAG_ONE_THREAD | SV_INIT_FLAG_AUDIO_FLOAT32;
+    int ver = sv_init( 0, sample_rate, num_channels, flags );
+    sunvox_buffer_size = buffer_size;
+    sunvox_buffer = (float*)malloc( buffer_size * num_channels * sizeof(float) );
+    return 0;
+}
+
 void am_open_audio_module(lua_State *L) {
+
+    int err = am_setup_sunvox(
+        am_conf_audio_buffer_size,
+        am_conf_audio_channels,
+        am_conf_audio_sample_rate = 44100
+    );
+
     luaL_Reg funcs[] = {
         {"audio_buffer", create_audio_buffer},
         {"audio_node", create_audio_node},
         {"oscillator", create_oscillator_node},
         {"capture_audio", create_capture_node},
+        {"sunvox", create_sunvox_node},
         {"track", create_audio_track_node},
         {"stream", create_audio_stream_node},
         {"load_audio", load_audio},
@@ -1797,6 +1908,7 @@ void am_open_audio_module(lua_State *L) {
     register_oscillator_node_mt(L);
     register_capture_node_mt(L);
     register_spectrum_node_mt(L);
+    register_sunvox_node_mt(L);
 
     audio_context.sample_rate = am_conf_audio_sample_rate;
     audio_context.sync_id = 0;

@@ -248,6 +248,17 @@ struct am_capture_node : am_audio_node {
     virtual bool finished();
 };
 
+struct am_sunvox_node : am_audio_node {
+    std::string filename;
+    int offset;
+
+    am_sunvox_node();
+    virtual void sync_params();
+    virtual void render_audio(am_audio_context *context, am_audio_bus *bus);
+    virtual void post_render(am_audio_context *context, int num_samples);
+    virtual bool finished();
+};
+
 void am_open_audio_module(lua_State *L);
 
 void am_destroy_audio();
