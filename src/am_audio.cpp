@@ -11,6 +11,7 @@
 #include "../third_party/sunvox_dll/headers/sunvox.h"
 static float *sunvox_buffer = NULL;
 static int sunvox_buffer_size = 0;
+static int16_t* scope_buffer = NULL;
 
 #define AM_AUDIO_NODE_FLAG_MARK             ((uint32_t)1)
 #define AM_AUDIO_NODE_FLAG_CHILDREN_DIRTY   ((uint32_t)2)
@@ -797,35 +798,6 @@ am_sunvox_node::am_sunvox_node()
 }
 
 void am_sunvox_node::sync_params() {
-    // int level = sv_get_current_signal_level( slot, channel ); // 0-255
-    // int bpm = sv_get_song_bpm( slot );
-    // int num = sv_get_number_of_modules( slot );
-    // const char* sv_get_module_name( int slot, int mod_num ) SUNVOX_FN_ATTR;
-    // int mod = sv_find_module( slot, name );
-    // uint32_t sv_get_module_flags( int slot, int mod_num ) SUNVOX_FN_ATTR; /* SV_MODULE_FLAG_xxx */
-    // uint32_t sv_get_module_xy( int slot, int mod_num ) SUNVOX_FN_ATTR;
-    // int sv_get_module_color( int slot, int mod_num ) SUNVOX_FN_ATTR;
-    // 
-    /*
-   sv_get_module_scope2() return value = received number of samples (may be less or equal to samples_to_read).
-   Example:
-     int16_t buf[ 1024 ];
-     int received = sv_get_module_scope2( slot, mod_num, 0, buf, 1024 );
-     //buf[ 0 ] = value of the first sample (-32768...32767);
-     //buf[ 1 ] = value of the second sample;
-     //...
-     //buf[ received - 1 ] = value of the last received sample;
-*/
-// uint32_t sv_get_module_scope2( int slot, int mod_num, int channel, int16_t* dest_buf, uint32_t samples_to_read ) SUNVOX_FN_ATTR;
-
-/*
-int sv_get_number_of_module_ctls( int slot, int mod_num ) SUNVOX_FN_ATTR;
-const char* sv_get_module_ctl_name( int slot, int mod_num, int ctl_num ) SUNVOX_FN_ATTR;
-int sv_get_module_ctl_value( int slot, int mod_num, int ctl_num, int scaled ) SUNVOX_FN_ATTR;
-*/
-
-// const char* sv_get_log( int size ) SUNVOX_FN_ATTR;
-
 }
 
 void am_sunvox_node::post_render(am_audio_context *context, int num_samples) {
@@ -1896,14 +1868,45 @@ static int sunvox_get_module_flags(lua_State *L) {
     return 1;
 }
 
-/*
-   sv_get_module_inputs(), sv_get_module_outputs() - 
-   get pointers to the int[] arrays with the input/output links.
-   Number of inputs = ( module_flags & SV_MODULE_INPUTS_MASK ) >> SV_MODULE_INPUTS_OFF.
-   Number of outputs = ( module_flags & SV_MODULE_OUTPUTS_MASK ) >> SV_MODULE_OUTPUTS_OFF.
-*/
-// int* sv_get_module_inputs( int slot, int mod_num ) SUNVOX_FN_ATTR;
-// int* sv_get_module_outputs( int slot, int mod_num ) SUNVOX_FN_ATTR;
+static int sunvox_get_module_inputs(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int mod_num = luaL_checknumber(L, 3);
+
+    uint32_t flags = sv_get_module_flags(slot, mod_num);
+    int num_inputs = ( flags & SV_MODULE_INPUTS_MASK ) >> SV_MODULE_INPUTS_OFF;
+    int *inputs = sv_get_module_inputs(slot, mod_num);
+
+    lua_createtable(L, num_inputs, 0);
+    for (int i=0; i<num_inputs; i++) {
+        lua_pushinteger(L, inputs[i]);
+        lua_rawseti (L, -2, i+1);
+    }
+
+    return 1;
+}
+
+static int sunvox_get_module_outputs(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int mod_num = luaL_checknumber(L, 3);
+
+    uint32_t flags = sv_get_module_flags(slot, mod_num);
+    int num_outputs = ( flags & SV_MODULE_OUTPUTS_MASK ) >> SV_MODULE_OUTPUTS_OFF;
+    int *outputs = sv_get_module_outputs(slot, mod_num);
+
+    lua_createtable(L, num_outputs, 0);
+    for (int i=0; i<num_outputs; i++) {
+        lua_pushinteger(L, outputs[i]);
+        lua_rawseti (L, -2, i+1);
+    }
+
+    return 1;
+}
 
 static int sunvox_get_module_name(lua_State *L) {
     int nargs = am_check_nargs(L, 3);
@@ -1914,6 +1917,8 @@ static int sunvox_get_module_name(lua_State *L) {
 
     const char* name = sv_get_module_name(slot, mod_num);
     lua_pushstring(L, name);
+
+    fprintf(stderr, "DEBUG: name = %s\n", name);
 
     return 1;
 }
@@ -1928,6 +1933,8 @@ static int sunvox_get_module_xy(lua_State *L) {
     uint32_t xy = sv_get_module_xy(slot, mod_num);
     int x, y;
     SV_GET_MODULE_XY(xy, x, y);
+
+    // fprintf(stderr, "DEBUG: xy = %ul, x = %d, y = %d\n", xy, x, y);
 
     // put the result into a 2-element table
     lua_createtable(L, 2, 0);
@@ -1947,15 +1954,20 @@ static int sunvox_get_module_color(lua_State *L) {
     int mod_num = luaL_checknumber(L, 3);
 
     int rgb = sv_get_module_color(slot, mod_num);
+    int r = rgb & 0xFF;
+    int g = (rgb >> 8) & 0xFF;
+    int b = (rgb >> 16) & 0xFF;
+
+    // fprintf(stderr, "DEBUG: rgb = #%06x, r = %d, g = %d, b = %d\n", rgb, r, g, b);
 
     // put the result into a 3-element table
     lua_createtable(L, 3, 0);
-    lua_pushinteger(L, rgb & 0xFF);
+    lua_pushinteger(L, r);
     lua_rawseti (L, -2, 1);
-    lua_pushinteger(L, (rgb >> 8) & 0xFF);
-    lua_rawseti (L, -2, 1);
-    lua_pushinteger(L, (rgb >> 16) & 0xFF);
-    lua_rawseti (L, -2, 1);
+    lua_pushinteger(L, g);
+    lua_rawseti (L, -2, 2);
+    lua_pushinteger(L, b);
+    lua_rawseti (L, -2, 3);
 
     return 1;
 }
@@ -1981,17 +1993,29 @@ static int sunvox_get_module_finetune(lua_State *L) {
     return 1;
 }
 
-/*
-   sv_get_module_scope2() return value = received number of samples (may be less or equal to samples_to_read).
-   Example:
-     int16_t buf[ 1024 ];
-     int received = sv_get_module_scope2( slot, mod_num, 0, buf, 1024 );
-     //buf[ 0 ] = value of the first sample (-32768...32767);
-     //buf[ 1 ] = value of the second sample;
-     //...
-     //buf[ received - 1 ] = value of the last received sample;
-*/
-// uint32_t sv_get_module_scope2( int slot, int mod_num, int channel, int16_t* dest_buf, uint32_t samples_to_read ) SUNVOX_FN_ATTR;
+static int sunvox_get_module_scope2(lua_State *L) {
+    int nargs = am_check_nargs(L, 5);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int mod_num = luaL_checknumber(L, 3);
+    int channel = luaL_checknumber(L, 4);
+    int num_samples = luaL_checknumber(L, 5);
+
+    if (num_samples > sunvox_buffer_size) {
+        return luaL_error(L, "sunvox can't get_module_scope2 more than %d samples", sunvox_buffer_size);
+    }
+
+    int received = sv_get_module_scope2( slot, mod_num, channel, scope_buffer, num_samples );
+
+    lua_createtable(L, received, 0);
+    for (int i=0; i<received; i++) {
+        lua_pushinteger(L, scope_buffer[i]);
+        lua_rawseti (L, -2, i+1);
+    }
+
+    return 1;
+}
 
 /*
    sv_module_curve() - access to the curve values of the specified module
@@ -2131,6 +2155,10 @@ static void register_sunvox_node_mt(lua_State *L) {
     lua_setfield(L, -2, "find_module");
     lua_pushcclosure(L, sunvox_get_module_flags, 0);
     lua_setfield(L, -2, "get_module_flags");
+    lua_pushcclosure(L, sunvox_get_module_inputs, 0);
+    lua_setfield(L, -2, "get_module_inputs");
+    lua_pushcclosure(L, sunvox_get_module_outputs, 0);
+    lua_setfield(L, -2, "get_module_outputs");
     lua_pushcclosure(L, sunvox_get_module_name, 0);
     lua_setfield(L, -2, "get_module_name");
     lua_pushcclosure(L, sunvox_get_module_xy, 0);
@@ -2139,6 +2167,8 @@ static void register_sunvox_node_mt(lua_State *L) {
     lua_setfield(L, -2, "get_module_color");
     lua_pushcclosure(L, sunvox_get_module_finetune, 0);
     lua_setfield(L, -2, "get_module_finetune");
+    lua_pushcclosure(L, sunvox_get_module_scope2, 0);
+    lua_setfield(L, -2, "get_module_scope2");
 
     am_register_metatable(L, "sunvox", MT_am_sunvox_node, MT_am_audio_node);
 }
@@ -2574,6 +2604,7 @@ int am_setup_sunvox(int buffer_size, int num_channels, int sample_rate) {
     int ver = sv_init( NULL, sample_rate, num_channels, flags );
     sunvox_buffer_size = buffer_size;
     sunvox_buffer = (float*)malloc( buffer_size * num_channels * sizeof(float) );
+    scope_buffer = (int16_t*)malloc( buffer_size * sizeof(int16_t) );
     return 0;
 }
 

@@ -1,4 +1,24 @@
-win = am.window{title = "Sounds"}
+win = am.window{
+    title = "Sunvox Player",
+    width = 1024,
+    height = 1024
+}
+world = am.group()
+-- 0,0 to 1024,1024 to match Sunvox's coordinate system
+world_origin = vec2(win.width/2, win.height/2)
+win.scene = am.translate(-world_origin) ^ world
+
+border_color_inactive = vec4(.5,.5,.5,1)
+border_color_hover = vec4(1,1,1,1)
+border_color_active = vec4(1,1,0,1)
+
+function win2world(pos)
+    return pos + world_origin
+end
+
+function world2win(pos)
+    return pos - world_origin
+end
 
 songs = {
     "/Users/jminor/git/sunvox/examples/simple_examples/dubstep.sunvox",
@@ -19,35 +39,127 @@ songs = {
     "/Users/jminor/git/sunvox/examples/sunvox_compo/KnyazIvan - fatal precession.sunvox",
     "/Users/jminor/git/sunvox/examples/sunvox_compo/Trackerbound - make a wish.sunvox",
 }
-
-group = am.group()
+song_index = 0
 
 sunvox = am.sunvox()
-group:action("sunvox", am.play(sunvox, false, 1))
 sunvox_slot = 0
+world:action("sunvox", am.play(sunvox, false, 1))
+world:action("keyboard", function()
+    if win:key_pressed("right") then
+        next_song(1)
+    end
+    if win:key_pressed("left") then
+        next_song(-1)
+    end
+end)
 
-for i = 0, 11 do
-    for j = 0, 3 do
-        local x1 = 640 / 12 * i - 320
-        local y1 = 480 / 4 * j - 240
-        local x2 = x1 + 640 / 12
-        local y2 = y1 + 480 / 4
-        local color = vec4(1-i/12, i/12, j/5 + 0.2, 1)
-        local rect = am.rect(x1, y1, x2, y2, color)
+function main()
+    next_song(1)
+
+end
+
+function next_song(offset)
+    -- TODO: we could stop the old song, and then start the new one on a different slot
+    -- so the old one would fade out?
+    song_index = ((song_index - 1 + offset) % #songs) + 1
+    load_song(song_index)
+    show_song()
+end
+
+function load_song(index)
+    sunvox:load(sunvox_slot, songs[index])
+    sunvox:play_from_beginning(sunvox_slot)
+end
+
+function test_bit(number, bit)
+    local x = number
+    for i = 0, bit do
+        x = math.floor(x/2)
+    end
+    return math.floor(x/2) ~= x/2
+end
+
+function show_song()
+    world:remove_all()
+
+    local modules = {}
+    for mod_num = 0, sunvox:get_number_of_modules(sunvox_slot)-1 do
+        local flags = sunvox:get_module_flags(sunvox_slot, mod_num)
+        local exists = test_bit(flags, 0)
+        if exists then
+            table.insert(modules, mod_num)
+        end
+    end
+
+    local w = 60
+    local h = 40
+
+    -- lines first
+    for _,mod_num in ipairs(modules) do
+        local xy = sunvox:get_module_xy(sunvox_slot, mod_num)
+
+        local inputs = sunvox:get_module_inputs(sunvox_slot, mod_num)
+        for i,input in ipairs(inputs) do
+            local iflags = sunvox:get_module_flags(sunvox_slot, input)
+            local iexists = test_bit(iflags, 0)
+            if iexists then
+                local ixy = sunvox:get_module_xy(sunvox_slot, input)
+                world:append(
+                    am.line(vec2(xy[1]+w/2,xy[2]+h/2), vec2(ixy[1]+w/2, ixy[2]+h/2), 1, vec4(1,1,1,1))
+                )
+            end
+        end
+
+    end
+
+    -- then the modules
+    for _,mod_num in ipairs(modules) do
+        local name = sunvox:get_module_name(sunvox_slot, mod_num)
+        local xy = sunvox:get_module_xy(sunvox_slot, mod_num)
+        local rgb = sunvox:get_module_color(sunvox_slot, mod_num)
+        local color = vec4(rgb[1]/255, rgb[2]/255, rgb[3]/255, 1)
+
+        local x1 = xy[1]
+        local y1 = xy[2]
+        local x2 = xy[1]+w
+        local y2 = xy[2]+h
+
+        local rect = am.rect(0,0, w,h, color)
+        local mask = am.rect(0,0, w,h, vec4(0,0,0,1))
+        local border = am.rect(-1,-1, w+2,h+2, border_color_inactive)
+        local waveform = am.group()
+        local label = am.text(
+            name,
+            vec4(0,0,0,1),
+            "left",
+            "bottom"
+        )
+
+        local module = am.translate(vec2(x1,y1)) ^ am.group { border, mask, rect, waveform, label }
+
         local level_meter = 0
-        local playing = false
-        rect:action("update", function()
-            local pos = win:mouse_position()
+        local muted = false
+
+        module:action("update", function()
+            local nsamp = 100
+            local scope_data = sunvox:get_module_scope2(sunvox_slot, mod_num, 0, nsamp)
+            waveform:remove_all()
+            for i,v in ipairs(scope_data) do
+                local x = i*w/nsamp
+                local y = v*h/0xFFFF + h/2
+                waveform:append(am.line(vec2(x,h/2), vec2(x,y)))
+            end
+
+            local pos = win2world(win:mouse_position())
             if pos.x > x1 and pos.x < x2 and pos.y > y1 and pos.y < y2 then
+                border.color = border_color_hover
                 if win:mouse_pressed"left" then
+                    border.color = border_color_active
                     if not playing then
                         playing = true
-                        local pitch = 2 ^ (i / 12 - 3 + j)
                         rect.color = vec4(1 - color.rgb, 1)
+                        next_song(1)
                         local slot = sunvox_slot
-                        sunvox_slot = (sunvox_slot + 1) % 4
-                        sunvox:load(slot, songs[i+1])
-                        sunvox:play_from_beginning(slot)
                         rect:action("play", function()
                             if sunvox:end_of_song(slot) then
                                 rect.color = color
@@ -61,7 +173,7 @@ for i = 0, 11 do
                                     level_meter = level_meter - 0.05
                                     if level_meter < 0 then level_meter = 0 end
                                 end
-                                rect.y2 = y1 + (y2-y1) * level_meter
+                                rect.x2 = w * level_meter
                                 rect.color = vec4(
                                     rect.color.rgb,
                                     level_meter
@@ -74,10 +186,12 @@ for i = 0, 11 do
                         rect:cancel("play")
                     end
                 end
+            else
+                border.color = border_color_inactive
             end
         end)
-        group:append(rect)
+        world:append(module)
     end
 end
 
-win.scene = group
+main()
