@@ -1488,18 +1488,185 @@ static int create_sunvox_node(lua_State *L) {
     return 1;
 }
 
-static int sunvox_play_file(lua_State *L) {
-    int nargs = am_check_nargs(L, 1);
+// Sunvox API bindings
+// Most of these just pass through to the underlying API.
+// These are in the same order as sunvox.h
+
+static int sunvox_load(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
     am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
 
-    const char *filename = luaL_checkstring(L, 2);
-    int slot = nargs >= 3 ? luaL_checknumber(L, 3) : 0;
-    bool loop = nargs >= 4 ? luaL_checknumber(L, 4) : 0;
+    int slot = luaL_checknumber(L, 2);
+    const char *filename = luaL_checkstring(L, 3);
 
-    int res = node->play_file(filename, slot, loop);
+    sv_open_slot( slot );
+    int res = sv_load( slot, filename );
     if (res) {
         return luaL_error(L, "sunvox load error %d: %s\n", res, filename);
     }
+
+    fprintf(stderr, "sunvox loaded file into slot %d: %s\n", slot, filename);
+    fprintf(stderr, "sunvox song name: %s\n", sv_get_song_name(0));
+
+    // sv_volume( slot, 256 );
+    // sv_play_from_beginning( slot );
+
+    return 1;
+}
+
+static int sunvox_play(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int res = sv_play( slot );
+    if (res) {
+        return luaL_error(L, "sunvox play error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_play_from_beginning(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int res = sv_play_from_beginning( slot );
+    if (res) {
+        return luaL_error(L, "sunvox play_from_beginning error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_stop(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int res = sv_stop( slot );
+    if (res) {
+        return luaL_error(L, "sunvox stop error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_set_autostop(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int autostop = luaL_checknumber(L, 3);
+
+    int res = sv_set_autostop( slot, autostop );
+    if (res) {
+        return luaL_error(L, "sunvox set_autostop error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_get_autostop(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int autostop = sv_get_autostop( slot );
+    lua_pushinteger(L, autostop);
+
+    return 1;
+}
+
+static int sunvox_end_of_song(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int result = sv_end_of_song(slot);
+    lua_pushboolean(L, result);
+
+    return 1;
+}
+
+static int sunvox_rewind(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int line_num = luaL_checknumber(L, 3);
+
+    int res = sv_rewind(slot, line_num);
+    if (res) {
+        return luaL_error(L, "sunvox rewind error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_volume(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int volume = luaL_checknumber(L, 3);
+
+    int old_volume = sv_volume(slot, volume);
+    lua_pushinteger(L, old_volume);
+
+    return 1;
+}
+
+static int sunvox_set_event_t(lua_State *L) {
+    int nargs = am_check_nargs(L, 8);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int set = luaL_checknumber(L, 3);
+    int t = luaL_checknumber(L, 4);
+
+    int res = sv_set_event_t(slot, set, t);
+    if (res) {
+        return luaL_error(L, "sunvox set_event_t error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_send_event(lua_State *L) {
+    int nargs = am_check_nargs(L, 8);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int track_num = luaL_checknumber(L, 3);
+    int note = luaL_checknumber(L, 4);
+    int vel = luaL_checknumber(L, 5);
+    int module = luaL_checknumber(L, 6);
+    int ctl = luaL_checknumber(L, 7);
+    int ctl_val = luaL_checknumber(L, 8);
+
+    int res = sv_send_event(slot, track_num, note, vel, module, ctl, ctl_val);
+    if (res) {
+        return luaL_error(L, "sunvox send_event error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_get_current_line(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int line_num = sv_get_current_line(slot);
+    lua_pushinteger(L, line_num);
 
     return 1;
 }
@@ -1513,6 +1680,7 @@ static int sunvox_get_current_signal_level(lua_State *L) {
         int channel = nargs >= 3 ? luaL_checknumber(L, 3) : 0;
         result = sv_get_current_signal_level(slot, channel);
     }else{
+        // no channel specified - average L/R
         result = (
             sv_get_current_signal_level(slot, 0) +
             sv_get_current_signal_level(slot, 1)
@@ -1523,16 +1691,385 @@ static int sunvox_get_current_signal_level(lua_State *L) {
     return 1;
 }
 
-static int sunvox_end_of_song(lua_State *L) {
+static int sunvox_get_song_name(lua_State *L) {
     int nargs = am_check_nargs(L, 2);
     am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
-    int slot = nargs >= 2 ? luaL_checknumber(L, 2) : 0;
 
-    int result = sv_end_of_song(slot);
-    lua_pushboolean(L, result);
+    int slot = luaL_checknumber(L, 2);
+
+    const char* song_name = sv_get_song_name(slot);
+    lua_pushstring(L, song_name);
 
     return 1;
 }
+
+static int sunvox_get_song_bpm(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int bpm = sv_get_song_bpm(slot);
+    lua_pushinteger(L, bpm);
+
+    return 1;
+}
+
+static int sunvox_get_song_tpl(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int tpl = sv_get_song_tpl(slot);
+    lua_pushinteger(L, tpl);
+
+    return 1;
+}
+
+static int sunvox_get_song_length_frames(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int frames = sv_get_song_length_frames(slot);
+    lua_pushinteger(L, frames);
+
+    return 1;
+}
+
+static int sunvox_get_song_length_lines(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int lines = sv_get_song_length_lines(slot);
+    lua_pushinteger(L, lines);
+
+    return 1;
+}
+
+static int sunvox_new_module(lua_State *L) {
+    int nargs = am_check_nargs(L, 7);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    const char *type = luaL_checkstring(L, 3);
+    const char *name = luaL_checkstring(L, 4);
+    int x = luaL_checknumber(L, 5);
+    int y = luaL_checknumber(L, 6);
+    int z = luaL_checknumber(L, 7);
+
+    sv_lock_slot(slot);
+    int mod_num = sv_new_module(slot, type, name, x, y, z);
+    sv_unlock_slot(slot);
+    lua_pushinteger(L, mod_num);
+
+    return 1;
+}
+
+static int sunvox_remove_module(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int mod_num = luaL_checknumber(L, 3);
+
+    sv_lock_slot(slot);
+    int res = sv_remove_module(slot, mod_num);
+    sv_unlock_slot(slot);
+    if (res) {
+        return luaL_error(L, "sunvox remove_module error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_connect_module(lua_State *L) {
+    int nargs = am_check_nargs(L, 4);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int source = luaL_checknumber(L, 3);
+    int destination = luaL_checknumber(L, 4);
+
+    sv_lock_slot(slot);
+    int res = sv_connect_module(slot, source, destination);
+    sv_unlock_slot(slot);
+    if (res) {
+        return luaL_error(L, "sunvox connect_module error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_disconnect_module(lua_State *L) {
+    int nargs = am_check_nargs(L, 4);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int source = luaL_checknumber(L, 3);
+    int destination = luaL_checknumber(L, 4);
+
+    sv_lock_slot(slot);
+    int res = sv_disconnect_module(slot, source, destination);
+    sv_unlock_slot(slot);
+    if (res) {
+        return luaL_error(L, "sunvox disconnect_module error %d\n", res);
+    }
+
+    return 1;
+}
+
+static int sunvox_load_module(lua_State *L) {
+    int nargs = am_check_nargs(L, 6);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    const char *filename = luaL_checkstring(L, 3);
+    int x = luaL_checknumber(L, 4);
+    int y = luaL_checknumber(L, 5);
+    int z = luaL_checknumber(L, 6);
+
+    // sv_lock_slot(slot);
+    int mod_num = sv_load_module(slot, filename, x, y, z);
+    // sv_unlock_slot(slot);
+    lua_pushinteger(L, mod_num);
+
+    return 1;
+}
+
+static int sunvox_sampler_load(lua_State *L) {
+    int nargs = am_check_nargs(L, 5);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int sampler_module = luaL_checknumber(L, 3);
+    const char *filename = luaL_checkstring(L, 4);
+    int sample_slot = luaL_checknumber(L, 5);
+
+    // sv_lock_slot(slot);
+    int result = sv_sampler_load(slot, sampler_module, filename, sample_slot);
+    // sv_unlock_slot(slot);
+    lua_pushinteger(L, result);
+
+    return 1;
+}
+
+static int sunvox_get_number_of_modules(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+
+    int result = sv_get_number_of_modules(slot);
+    lua_pushinteger(L, result);
+
+    return 1;
+}
+
+static int sunvox_find_module(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    const char *name = luaL_checkstring(L, 3);
+
+    int result = sv_find_module(slot, name);
+    lua_pushinteger(L, result);
+
+    return 1;
+}
+
+static int sunvox_get_module_flags(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int mod_num = luaL_checknumber(L, 3);
+
+    uint32_t flags = sv_get_module_flags(slot, mod_num);
+    lua_pushinteger(L, flags);
+
+    return 1;
+}
+
+/*
+   sv_get_module_inputs(), sv_get_module_outputs() - 
+   get pointers to the int[] arrays with the input/output links.
+   Number of inputs = ( module_flags & SV_MODULE_INPUTS_MASK ) >> SV_MODULE_INPUTS_OFF.
+   Number of outputs = ( module_flags & SV_MODULE_OUTPUTS_MASK ) >> SV_MODULE_OUTPUTS_OFF.
+*/
+// int* sv_get_module_inputs( int slot, int mod_num ) SUNVOX_FN_ATTR;
+// int* sv_get_module_outputs( int slot, int mod_num ) SUNVOX_FN_ATTR;
+
+static int sunvox_get_module_name(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int mod_num = luaL_checknumber(L, 3);
+
+    const char* name = sv_get_module_name(slot, mod_num);
+    lua_pushstring(L, name);
+
+    return 1;
+}
+
+static int sunvox_get_module_xy(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int mod_num = luaL_checknumber(L, 3);
+
+    uint32_t xy = sv_get_module_xy(slot, mod_num);
+    int x, y;
+    SV_GET_MODULE_XY(xy, x, y);
+
+    // put the result into a 2-element table
+    lua_createtable(L, 2, 0);
+    lua_pushinteger(L, x);
+    lua_rawseti (L, -2, 1);
+    lua_pushinteger(L, y);
+    lua_rawseti (L, -2, 2);
+
+    return 1;
+}
+
+static int sunvox_get_module_color(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int mod_num = luaL_checknumber(L, 3);
+
+    int rgb = sv_get_module_color(slot, mod_num);
+
+    // put the result into a 3-element table
+    lua_createtable(L, 3, 0);
+    lua_pushinteger(L, rgb & 0xFF);
+    lua_rawseti (L, -2, 1);
+    lua_pushinteger(L, (rgb >> 8) & 0xFF);
+    lua_rawseti (L, -2, 1);
+    lua_pushinteger(L, (rgb >> 16) & 0xFF);
+    lua_rawseti (L, -2, 1);
+
+    return 1;
+}
+
+static int sunvox_get_module_finetune(lua_State *L) {
+    int nargs = am_check_nargs(L, 3);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int slot = luaL_checknumber(L, 2);
+    int mod_num = luaL_checknumber(L, 3);
+
+    uint32_t packed = sv_get_module_finetune(slot, mod_num);
+    int finetune, relative_note;
+    SV_GET_MODULE_FINETUNE(packed, finetune, relative_note);
+
+    // put the result into a 2-element table
+    lua_createtable(L, 2, 0);
+    lua_pushinteger(L, finetune);
+    lua_rawseti (L, -2, 1);
+    lua_pushinteger(L, relative_note);
+    lua_rawseti (L, -2, 2);
+
+    return 1;
+}
+
+/*
+   sv_get_module_scope2() return value = received number of samples (may be less or equal to samples_to_read).
+   Example:
+     int16_t buf[ 1024 ];
+     int received = sv_get_module_scope2( slot, mod_num, 0, buf, 1024 );
+     //buf[ 0 ] = value of the first sample (-32768...32767);
+     //buf[ 1 ] = value of the second sample;
+     //...
+     //buf[ received - 1 ] = value of the last received sample;
+*/
+// uint32_t sv_get_module_scope2( int slot, int mod_num, int channel, int16_t* dest_buf, uint32_t samples_to_read ) SUNVOX_FN_ATTR;
+
+/*
+   sv_module_curve() - access to the curve values of the specified module
+   Parameters:
+     slot;
+     mod_num - module number;
+     curve_num - curve number;
+     data - destination or source buffer;
+     len - number of items to read/write;
+     w - read (0) or write (1).
+   return value: number of items processed successfully.
+
+   Available curves (Y=CURVE[X]):
+     MultiSynth:
+       0 - X = note (0..127); Y = velocity (0..1); 128 items;
+       1 - X = velocity (0..256); Y = velocity (0..1); 257 items;
+     WaveShaper:
+       0 - X = input (0..255); Y = output (0..1); 256 items;
+     MultiCtl:
+       0 - X = input (0..256); Y = output (0..1); 257 items;
+     Analog Generator, Generator:
+       0 - X = drawn waveform sample number (0..31); Y = volume (-1..1); 32 items;
+*/
+// int sv_module_curve( int slot, int mod_num, int curve_num, float* data, int len, int w ) SUNVOX_FN_ATTR;
+
+// int sv_get_number_of_module_ctls( int slot, int mod_num ) SUNVOX_FN_ATTR;
+// const char* sv_get_module_ctl_name( int slot, int mod_num, int ctl_num ) SUNVOX_FN_ATTR;
+// int sv_get_module_ctl_value( int slot, int mod_num, int ctl_num, int scaled ) SUNVOX_FN_ATTR;
+// int sv_get_number_of_patterns( int slot ) SUNVOX_FN_ATTR;
+// int sv_find_pattern( int slot, const char* name ) SUNVOX_FN_ATTR;
+// int sv_get_pattern_x( int slot, int pat_num ) SUNVOX_FN_ATTR;
+// int sv_get_pattern_y( int slot, int pat_num ) SUNVOX_FN_ATTR;
+// int sv_get_pattern_tracks( int slot, int pat_num ) SUNVOX_FN_ATTR;
+// int sv_get_pattern_lines( int slot, int pat_num ) SUNVOX_FN_ATTR;
+// const char* sv_get_pattern_name( int slot, int pat_num ) SUNVOX_FN_ATTR;
+
+/*
+   sv_get_pattern_data() - get the pattern buffer (for reading and writing)
+   containing notes (events) in the following order:
+     line 0: note for track 0, note for track 1, ... note for track X;
+     line 1: note for track 0, note for track 1, ... note for track X;
+     ...
+     line X: ...
+   Example:
+     int pat_tracks = sv_get_pattern_tracks( slot, pat_num ); //number of tracks
+     sunvox_note* data = sv_get_pattern_data( slot, pat_num ); //get the buffer with all the pattern events (notes)
+     sunvox_note* n = &data[ line_number * pat_tracks + track_number ];
+     ... and then do someting with note n ...
+*/
+// sunvox_note* sv_get_pattern_data( int slot, int pat_num ) SUNVOX_FN_ATTR;
+
+/*
+   sv_pattern_mute() - mute (1) / unmute (0) specified pattern;
+   negative values are ignored;
+   return value: previous state (1 - muted; 0 - unmuted) or -1 (error);
+*/
+// int sv_pattern_mute( int slot, int pat_num, int mute ) SUNVOX_FN_ATTR; /* USE LOCK/UNLOCK! */
+
+/*
+   SunVox engine uses its own time space, measured in system ticks (don't confuse it with the project ticks);
+   required when calculating the out_time parameter in the sv_audio_callback().
+   Use sv_get_ticks() to get current tick counter (from 0 to 0xFFFFFFFF).
+   Use sv_get_ticks_per_second() to get the number of SunVox ticks per second.
+*/
+// uint32_t sv_get_ticks( void ) SUNVOX_FN_ATTR;
+// uint32_t sv_get_ticks_per_second( void ) SUNVOX_FN_ATTR;
+
+/*
+   sv_get_log() - get the latest messages from the log
+   Parameters:
+     size - max number of bytes to read.
+   Return value: pointer to the null-terminated string with the latest log messages.
+*/
+// const char* sv_get_log( int size ) SUNVOX_FN_ATTR;
+
+
+
+// End of Sunvox API
 
 static void register_sunvox_node_mt(lua_State *L) {
     lua_newtable(L);
@@ -1540,12 +2077,68 @@ static void register_sunvox_node_mt(lua_State *L) {
     lua_setfield(L, -2, "__index");
     am_set_default_newindex_func(L);
 
-    lua_pushcclosure(L, sunvox_play_file, 0);
-    lua_setfield(L, -2, "play_file");
-    lua_pushcclosure(L, sunvox_get_current_signal_level, 0);
-    lua_setfield(L, -2, "get_current_signal_level");
+    lua_pushcclosure(L, sunvox_load, 0);
+    lua_setfield(L, -2, "load");
+    lua_pushcclosure(L, sunvox_play, 0);
+    lua_setfield(L, -2, "play");
+    lua_pushcclosure(L, sunvox_play_from_beginning, 0);
+    lua_setfield(L, -2, "play_from_beginning");
+    lua_pushcclosure(L, sunvox_stop, 0);
+    lua_setfield(L, -2, "stop");
+    lua_pushcclosure(L, sunvox_set_autostop, 0);
+    lua_setfield(L, -2, "set_autostop");
+    lua_pushcclosure(L, sunvox_get_autostop, 0);
+    lua_setfield(L, -2, "get_autostop");
     lua_pushcclosure(L, sunvox_end_of_song, 0);
     lua_setfield(L, -2, "end_of_song");
+    lua_pushcclosure(L, sunvox_rewind, 0);
+    lua_setfield(L, -2, "rewind");
+    lua_pushcclosure(L, sunvox_volume, 0);
+    lua_setfield(L, -2, "volume");
+    lua_pushcclosure(L, sunvox_set_event_t, 0);
+    lua_setfield(L, -2, "set_event_t");
+    lua_pushcclosure(L, sunvox_send_event, 0);
+    lua_setfield(L, -2, "send_event");
+    lua_pushcclosure(L, sunvox_get_current_line, 0);
+    lua_setfield(L, -2, "get_current_line");
+    lua_pushcclosure(L, sunvox_get_current_signal_level, 0);
+    lua_setfield(L, -2, "get_current_signal_level");
+    lua_pushcclosure(L, sunvox_get_song_name, 0);
+    lua_setfield(L, -2, "get_song_name");
+    lua_pushcclosure(L, sunvox_get_song_bpm, 0);
+    lua_setfield(L, -2, "get_song_bpm");
+    lua_pushcclosure(L, sunvox_get_song_tpl, 0);
+    lua_setfield(L, -2, "get_song_tpl");
+    lua_pushcclosure(L, sunvox_get_song_length_frames, 0);
+    lua_setfield(L, -2, "get_song_length_frames");
+    lua_pushcclosure(L, sunvox_get_song_length_lines, 0);
+    lua_setfield(L, -2, "get_song_length_lines");
+    lua_pushcclosure(L, sunvox_new_module, 0);
+    lua_setfield(L, -2, "new_module");
+    lua_pushcclosure(L, sunvox_remove_module, 0);
+    lua_setfield(L, -2, "remove_module");
+    lua_pushcclosure(L, sunvox_connect_module, 0);
+    lua_setfield(L, -2, "connect_module");
+    lua_pushcclosure(L, sunvox_disconnect_module, 0);
+    lua_setfield(L, -2, "disconnect_module");
+    lua_pushcclosure(L, sunvox_load_module, 0);
+    lua_setfield(L, -2, "load_module");
+    lua_pushcclosure(L, sunvox_sampler_load, 0);
+    lua_setfield(L, -2, "sampler_load");
+    lua_pushcclosure(L, sunvox_get_number_of_modules, 0);
+    lua_setfield(L, -2, "get_number_of_modules");
+    lua_pushcclosure(L, sunvox_find_module, 0);
+    lua_setfield(L, -2, "find_module");
+    lua_pushcclosure(L, sunvox_get_module_flags, 0);
+    lua_setfield(L, -2, "get_module_flags");
+    lua_pushcclosure(L, sunvox_get_module_name, 0);
+    lua_setfield(L, -2, "get_module_name");
+    lua_pushcclosure(L, sunvox_get_module_xy, 0);
+    lua_setfield(L, -2, "get_module_xy");
+    lua_pushcclosure(L, sunvox_get_module_color, 0);
+    lua_setfield(L, -2, "get_module_color");
+    lua_pushcclosure(L, sunvox_get_module_finetune, 0);
+    lua_setfield(L, -2, "get_module_finetune");
 
     am_register_metatable(L, "sunvox", MT_am_sunvox_node, MT_am_audio_node);
 }

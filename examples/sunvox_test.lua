@@ -46,7 +46,8 @@ for i = 0, 11 do
                         rect.color = vec4(1 - color.rgb, 1)
                         local slot = sunvox_slot
                         sunvox_slot = (sunvox_slot + 1) % 4
-                        sunvox:play_file(songs[i+1], slot, 0)
+                        sunvox:load(slot, songs[i+1])
+                        sunvox:play_from_beginning(slot)
                         rect:action("play", function()
                             if sunvox:end_of_song(slot) then
                                 rect.color = color
