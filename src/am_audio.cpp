@@ -11,8 +11,6 @@
 #include "../third_party/sunvox_dll/headers/sunvox.h"
 static float *sunvox_buffer = NULL;
 static int sunvox_buffer_size = 0;
-static int sunvox_slot_count = 4; // there are only 4 slots available
-static bool sunvox_slot_occupied[4];
 
 #define AM_AUDIO_NODE_FLAG_MARK             ((uint32_t)1)
 #define AM_AUDIO_NODE_FLAG_CHILDREN_DIRTY   ((uint32_t)2)
@@ -792,22 +790,10 @@ bool am_capture_node::finished() {
 
 // Sunvox Node
 
-static int find_open_sunvox_slot() {
-    for (int slot=0; slot<sunvox_slot_count; slot++) {
-        if (!sunvox_slot_occupied[slot]) {
-            return slot;
-        }
-    }
-    // return invalid slot number
-    return -1;
-}
-
 am_sunvox_node::am_sunvox_node()
-    : filename("")
+    : filename(""),
+    offset(0)
 {
-    slot = find_open_sunvox_slot();
-    offset = 0;
-    loop = 0;
 }
 
 void am_sunvox_node::sync_params() {
@@ -847,8 +833,6 @@ void am_sunvox_node::post_render(am_audio_context *context, int num_samples) {
 }
 
 void am_sunvox_node::render_audio(am_audio_context *context, am_audio_bus *bus) {
-    if (slot != 0) return;
-
     int num_channels = bus->num_channels;
     int num_samples = bus->num_samples;
 
@@ -866,6 +850,7 @@ void am_sunvox_node::render_audio(am_audio_context *context, am_audio_bus *bus) 
     if (am_conf_audio_sample_rate != sv_get_ticks_per_second()) {
         ticks = (double)offset / (double)am_conf_audio_sample_rate * sv_get_ticks_per_second();
     }
+    // uint32_t ticks = sv_get_ticks();
 	sv_audio_callback( sunvox_buffer, num_samples, 0, ticks );
 
     for (int i = 0; i < num_samples; i++) {
@@ -876,24 +861,36 @@ void am_sunvox_node::render_audio(am_audio_context *context, am_audio_bus *bus) 
 }
 
 bool am_sunvox_node::finished() {
-    if (slot == -1) return true;
-    if (loop) return false;
-    if (sv_end_of_song(slot)) {
-        // TODO: Note the open slot here, instead of in ~am_sunvox_node()
-        // because that never seems to get called?!
-        sunvox_slot_occupied[slot] = false;
-        return true;
+    // are *any* of the slots still playing?
+    for (int slot=0; slot<4; slot++) {
+        if (!sv_end_of_song(slot)) {
+            return false;
+        }
     }
-    return false;
+    return true;
 }
 
 am_sunvox_node::~am_sunvox_node() {
-    // TODO: Why does this never get called?
-    fprintf(stderr, "closing slot %d: %s\n", slot, filename.c_str());
-    if (slot > 0) {
-        sunvox_slot_occupied[slot] = false;
-        sv_close_slot( slot );
+    // sv_close_slot( slot );
+}
+
+int am_sunvox_node::play_file(const char *filename, int slot, bool loop) {
+    this->filename = filename;
+
+    sv_open_slot( slot );
+    int res = sv_load( slot, filename );
+    if( res != 0 ) {
+        return res;
     }
+
+    fprintf(stderr, "sunvox loaded file into slot %d: %s\n", slot, filename);
+    fprintf(stderr, "sunvox song name: %s\n", sv_get_song_name(0));
+
+    sv_set_autostop( slot, !loop );
+    sv_volume( slot, 256 );
+    sv_play_from_beginning( slot );
+
+    return 0;
 }
 
 //-------------------------------------------------------------------------
@@ -1474,28 +1471,65 @@ static void register_capture_node_mt(lua_State *L) {
 // Sunvox node lua bindings
 
 static int create_sunvox_node(lua_State *L) {
-    int nargs = am_check_nargs(L, 1);
+    int nargs = am_check_nargs(L, 0);
     am_sunvox_node *node = am_new_userdata(L, am_sunvox_node);
-    const char *filename = luaL_checkstring(L, 1);
-    node->filename = filename;
 
-    if (node->slot == -1) {
-        return luaL_error(L, "sunvox slots are all taken, cannot load: %s\n", filename);
-    }else{
-        sv_open_slot( node->slot );
-        sunvox_slot_occupied[node->slot] = true;
-        int res = sv_load( node->slot, filename );
-        if( res != 0 ) {
+    if (nargs > 0) {
+        const char *filename = luaL_checkstring(L, 1);
+        int slot = nargs > 1 ? luaL_checknumber(L, 2) : 0;
+        bool loop = nargs > 2 ? luaL_checknumber(L, 3) : 0;
+
+        int res = node->play_file(filename, slot, loop);
+        if (res) {
             return luaL_error(L, "sunvox load error %d: %s\n", res, filename);
         }
     }
 
-    fprintf(stderr, "sunvox loaded file into slot %d: %s\n", node->slot, filename);
-    fprintf(stderr, "sunvox song name: %s\n", sv_get_song_name(0));
+    return 1;
+}
 
-    sv_set_autostop( node->slot, !node->loop );
-	sv_volume( node->slot, 256 );
-	sv_play_from_beginning( node->slot );
+static int sunvox_play_file(lua_State *L) {
+    int nargs = am_check_nargs(L, 1);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    const char *filename = luaL_checkstring(L, 2);
+    int slot = nargs >= 3 ? luaL_checknumber(L, 3) : 0;
+    bool loop = nargs >= 4 ? luaL_checknumber(L, 4) : 0;
+
+    int res = node->play_file(filename, slot, loop);
+    if (res) {
+        return luaL_error(L, "sunvox load error %d: %s\n", res, filename);
+    }
+
+    return 1;
+}
+
+static int sunvox_get_current_signal_level(lua_State *L) {
+    int result = 0;
+    int nargs = am_check_nargs(L, 1);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+    int slot = nargs >= 2 ? luaL_checknumber(L, 2) : 0;
+    if (nargs >= 3) {
+        int channel = nargs >= 3 ? luaL_checknumber(L, 3) : 0;
+        result = sv_get_current_signal_level(slot, channel);
+    }else{
+        result = (
+            sv_get_current_signal_level(slot, 0) +
+            sv_get_current_signal_level(slot, 1)
+            ) / 2;
+    }
+    lua_pushinteger(L, result);
+
+    return 1;
+}
+
+static int sunvox_end_of_song(lua_State *L) {
+    int nargs = am_check_nargs(L, 2);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+    int slot = nargs >= 2 ? luaL_checknumber(L, 2) : 0;
+
+    int result = sv_end_of_song(slot);
+    lua_pushboolean(L, result);
 
     return 1;
 }
@@ -1505,6 +1539,13 @@ static void register_sunvox_node_mt(lua_State *L) {
     lua_pushcclosure(L, am_audio_node_index, 0);
     lua_setfield(L, -2, "__index");
     am_set_default_newindex_func(L);
+
+    lua_pushcclosure(L, sunvox_play_file, 0);
+    lua_setfield(L, -2, "play_file");
+    lua_pushcclosure(L, sunvox_get_current_signal_level, 0);
+    lua_setfield(L, -2, "get_current_signal_level");
+    lua_pushcclosure(L, sunvox_end_of_song, 0);
+    lua_setfield(L, -2, "end_of_song");
 
     am_register_metatable(L, "sunvox", MT_am_sunvox_node, MT_am_audio_node);
 }
