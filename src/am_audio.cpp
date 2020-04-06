@@ -11,6 +11,8 @@
 #include "../third_party/sunvox_dll/headers/sunvox.h"
 static float *sunvox_buffer = NULL;
 static int sunvox_buffer_size = 0;
+static int sunvox_slot_count = 4; // there are only 4 slots available
+static bool sunvox_slot_occupied[4];
 
 #define AM_AUDIO_NODE_FLAG_MARK             ((uint32_t)1)
 #define AM_AUDIO_NODE_FLAG_CHILDREN_DIRTY   ((uint32_t)2)
@@ -790,13 +792,54 @@ bool am_capture_node::finished() {
 
 // Sunvox Node
 
+static int find_open_sunvox_slot() {
+    for (int slot=0; slot<sunvox_slot_count; slot++) {
+        if (!sunvox_slot_occupied[slot]) {
+            return slot;
+        }
+    }
+    // return invalid slot number
+    return -1;
+}
+
 am_sunvox_node::am_sunvox_node()
     : filename("")
 {
+    slot = find_open_sunvox_slot();
     offset = 0;
+    loop = 0;
 }
 
 void am_sunvox_node::sync_params() {
+    // int level = sv_get_current_signal_level( slot, channel ); // 0-255
+    // int bpm = sv_get_song_bpm( slot );
+    // int num = sv_get_number_of_modules( slot );
+    // const char* sv_get_module_name( int slot, int mod_num ) SUNVOX_FN_ATTR;
+    // int mod = sv_find_module( slot, name );
+    // uint32_t sv_get_module_flags( int slot, int mod_num ) SUNVOX_FN_ATTR; /* SV_MODULE_FLAG_xxx */
+    // uint32_t sv_get_module_xy( int slot, int mod_num ) SUNVOX_FN_ATTR;
+    // int sv_get_module_color( int slot, int mod_num ) SUNVOX_FN_ATTR;
+    // 
+    /*
+   sv_get_module_scope2() return value = received number of samples (may be less or equal to samples_to_read).
+   Example:
+     int16_t buf[ 1024 ];
+     int received = sv_get_module_scope2( slot, mod_num, 0, buf, 1024 );
+     //buf[ 0 ] = value of the first sample (-32768...32767);
+     //buf[ 1 ] = value of the second sample;
+     //...
+     //buf[ received - 1 ] = value of the last received sample;
+*/
+// uint32_t sv_get_module_scope2( int slot, int mod_num, int channel, int16_t* dest_buf, uint32_t samples_to_read ) SUNVOX_FN_ATTR;
+
+/*
+int sv_get_number_of_module_ctls( int slot, int mod_num ) SUNVOX_FN_ATTR;
+const char* sv_get_module_ctl_name( int slot, int mod_num, int ctl_num ) SUNVOX_FN_ATTR;
+int sv_get_module_ctl_value( int slot, int mod_num, int ctl_num, int scaled ) SUNVOX_FN_ATTR;
+*/
+
+// const char* sv_get_log( int size ) SUNVOX_FN_ATTR;
+
 }
 
 void am_sunvox_node::post_render(am_audio_context *context, int num_samples) {
@@ -804,6 +847,8 @@ void am_sunvox_node::post_render(am_audio_context *context, int num_samples) {
 }
 
 void am_sunvox_node::render_audio(am_audio_context *context, am_audio_bus *bus) {
+    if (slot != 0) return;
+
     int num_channels = bus->num_channels;
     int num_samples = bus->num_samples;
 
@@ -817,10 +862,10 @@ void am_sunvox_node::render_audio(am_audio_context *context, am_audio_bus *bus) 
     // via sv_get_ticks_per_second()
     // Note: We could use Sunvox's internal timer sv_get_ticks() instead.
     // Actually, it doesn't seem to matter what we pass in as 'ticks' even 0?!
-    uint32_t ticks = 0;
-    // if (am_conf_audio_sample_rate != sv_get_ticks_per_second()) {
-    //     ticks = (double)offset / (double)am_conf_audio_sample_rate * sv_get_ticks_per_second();
-    // }
+    uint32_t ticks = offset;
+    if (am_conf_audio_sample_rate != sv_get_ticks_per_second()) {
+        ticks = (double)offset / (double)am_conf_audio_sample_rate * sv_get_ticks_per_second();
+    }
 	sv_audio_callback( sunvox_buffer, num_samples, 0, ticks );
 
     for (int i = 0; i < num_samples; i++) {
@@ -831,7 +876,24 @@ void am_sunvox_node::render_audio(am_audio_context *context, am_audio_bus *bus) 
 }
 
 bool am_sunvox_node::finished() {
+    if (slot == -1) return true;
+    if (loop) return false;
+    if (sv_end_of_song(slot)) {
+        // TODO: Note the open slot here, instead of in ~am_sunvox_node()
+        // because that never seems to get called?!
+        sunvox_slot_occupied[slot] = false;
+        return true;
+    }
     return false;
+}
+
+am_sunvox_node::~am_sunvox_node() {
+    // TODO: Why does this never get called?
+    fprintf(stderr, "closing slot %d: %s\n", slot, filename.c_str());
+    if (slot > 0) {
+        sunvox_slot_occupied[slot] = false;
+        sv_close_slot( slot );
+    }
 }
 
 //-------------------------------------------------------------------------
@@ -1417,18 +1479,23 @@ static int create_sunvox_node(lua_State *L) {
     const char *filename = luaL_checkstring(L, 1);
     node->filename = filename;
 
-	sv_open_slot( 0 );
-    int res = sv_load( 0, filename );
-	if( res != 0 ) {
-	    fprintf(stderr,  "sunvox load error %d: %s\n", res, filename);
-        return 0;
+    if (node->slot == -1) {
+        return luaL_error(L, "sunvox slots are all taken, cannot load: %s\n", filename);
+    }else{
+        sv_open_slot( node->slot );
+        sunvox_slot_occupied[node->slot] = true;
+        int res = sv_load( node->slot, filename );
+        if( res != 0 ) {
+            return luaL_error(L, "sunvox load error %d: %s\n", res, filename);
+        }
     }
 
-    fprintf(stderr, "sunvox loaded file: %s\n", filename);
+    fprintf(stderr, "sunvox loaded file into slot %d: %s\n", node->slot, filename);
     fprintf(stderr, "sunvox song name: %s\n", sv_get_song_name(0));
 
-	sv_volume( 0, 256 );
-	sv_play_from_beginning( 0 );
+    sv_set_autostop( node->slot, !node->loop );
+	sv_volume( node->slot, 256 );
+	sv_play_from_beginning( node->slot );
 
     return 1;
 }
@@ -1867,11 +1934,10 @@ void am_uninterleave_audio(float* AM_RESTRICT dest, float* AM_RESTRICT src,
 
 int am_setup_sunvox(int buffer_size, int num_channels, int sample_rate) {
     if( sv_load_dll() ) {
-        fprintf(stderr, "failed to load sunvox module.");
         return -1;
     }
     int flags = SV_INIT_FLAG_USER_AUDIO_CALLBACK | SV_INIT_FLAG_ONE_THREAD | SV_INIT_FLAG_AUDIO_FLOAT32;
-    int ver = sv_init( 0, sample_rate, num_channels, flags );
+    int ver = sv_init( NULL, sample_rate, num_channels, flags );
     sunvox_buffer_size = buffer_size;
     sunvox_buffer = (float*)malloc( buffer_size * num_channels * sizeof(float) );
     return 0;
@@ -1884,6 +1950,10 @@ void am_open_audio_module(lua_State *L) {
         am_conf_audio_channels,
         am_conf_audio_sample_rate = 44100
     );
+    if (err) {
+        // TODO: Better way to return error message up the call stack?
+        fprintf(stderr, "failed to load sunvox module.");
+    }
 
     luaL_Reg funcs[] = {
         {"audio_buffer", create_audio_buffer},
