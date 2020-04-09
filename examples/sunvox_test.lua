@@ -53,7 +53,10 @@ world:action("keyboard", function()
     end
 end)
 
+shader_program = nil
+
 function main()
+    shader_program = create_shader_program()
     next_song(1)
 
 end
@@ -81,6 +84,8 @@ end
 
 function show_song()
     world:remove_all()
+
+    local rate = sunvox:get_sample_rate()
 
     local modules = {}
     for mod_num = 0, sunvox:get_number_of_modules(sunvox_slot)-1 do
@@ -140,15 +145,39 @@ function show_song()
         local level_meter = 0
         local muted = false
 
+        local num_samples = 1024
+        local xs = am.buffer(num_samples * 4):view("float", 0, 4)
+        for i = 1, num_samples do
+            xs[i] = ((i-1)/num_samples) * 2 - 1
+        end
+        local scope_buffer = am.buffer(num_samples * 4)
+        local scope_view = scope_buffer:view("float")
+        local scope_audio_buffer = am.audio_buffer(scope_buffer, 1, rate)
+
+        waveform:append(
+            am.use_program(shader_program)
+            ^am.bind{
+                MVP = mat4(1),
+                x = xs,
+                y = scope_view,
+                color = vec3(color)
+            }
+            ^am.blend("add")
+            ^am.draw("line_strip")
+        )
+
         module:action("update", function()
-            local nsamp = 100
-            local scope_data = sunvox:get_module_scope2(sunvox_slot, mod_num, 0, nsamp)
-            waveform:remove_all()
-            for i,v in ipairs(scope_data) do
-                local x = i*w/nsamp
-                local y = v*h/0xFFFF + h/2
-                waveform:append(am.line(vec2(x,h/2), vec2(x,y)))
-            end
+            local received = sunvox:get_module_scope2(sunvox_slot, mod_num, 0, scope_audio_buffer, num_samples)
+            -- waveform"bind".y = scope_view
+
+            -- local min=0
+            -- local max=0
+            -- for i = 1, num_samples do
+            --     local v = scope_view[i]
+            --     if v < min then min = v end
+            --     if v > max then max = v end
+            -- end
+            -- print("min/max = "..min.."/"..max)
 
             local pos = win2world(win:mouse_position())
             if pos.x > x1 and pos.x < x2 and pos.y > y1 and pos.y < y2 then
@@ -192,6 +221,26 @@ function show_song()
         end)
         world:append(module)
     end
+end
+
+function create_shader_program()
+    local vshader = [[
+        precision mediump float;
+        attribute float x;
+        attribute float y;
+        uniform mat4 MVP;
+        void main() {
+            gl_Position = MVP * vec4(x, 0.5*y/32768.0, 0, 1);
+        }
+    ]]
+    local fshader = [[
+        precision mediump float;
+        uniform vec3 color;
+        void main() {
+            gl_FragColor = vec4(color, 1.0);
+        }
+    ]]
+    return am.program(vshader, fshader)
 end
 
 main()

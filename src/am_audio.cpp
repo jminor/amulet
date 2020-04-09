@@ -1486,6 +1486,16 @@ static int sunvox_load(lua_State *L) {
     return 1;
 }
 
+static int sunvox_get_sample_rate(lua_State *L) {
+    int nargs = am_check_nargs(L, 1);
+    am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
+
+    int rate = sv_get_sample_rate();
+    lua_pushinteger(L, rate);
+
+    return 1;
+}
+
 static int sunvox_play(lua_State *L) {
     int nargs = am_check_nargs(L, 2);
     am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
@@ -1994,26 +2004,34 @@ static int sunvox_get_module_finetune(lua_State *L) {
 }
 
 static int sunvox_get_module_scope2(lua_State *L) {
-    int nargs = am_check_nargs(L, 5);
+    int nargs = am_check_nargs(L, 6);
     am_sunvox_node *node = am_get_userdata(L, am_sunvox_node, 1);
 
     int slot = luaL_checknumber(L, 2);
     int mod_num = luaL_checknumber(L, 3);
     int channel = luaL_checknumber(L, 4);
-    int num_samples = luaL_checknumber(L, 5);
+    am_audio_buffer *audio_buffer = am_get_userdata(L, am_audio_buffer, 5);
+    int num_samples = luaL_checknumber(L, 6);
 
     if (num_samples > sunvox_buffer_size) {
         return luaL_error(L, "sunvox can't get_module_scope2 more than %d samples", sunvox_buffer_size);
     }
 
-    int received = sv_get_module_scope2( slot, mod_num, channel, scope_buffer, num_samples );
+    // Ask sunvox to fill in the scope_buffer (int16)
+    int received = sv_get_module_scope2(slot, mod_num, channel, scope_buffer, num_samples );
 
-    lua_createtable(L, received, 0);
+    // Copy it into the float audio_buffer we were given
+    float* float_buf = (float*)audio_buffer->buffer->data;
+    int16_t* int_buf = scope_buffer;
     for (int i=0; i<received; i++) {
-        lua_pushinteger(L, scope_buffer[i]);
-        lua_rawseti (L, -2, i+1);
+        *float_buf++ = *int_buf++;
     }
 
+    // Mark the buffer dirty, so amulet knows to update
+    // any views or whatever that are pulling from this buffer.
+    audio_buffer->buffer->mark_dirty(0, received*sizeof(float));
+
+    lua_pushinteger(L, received); // lua return value
     return 1;
 }
 
@@ -2103,6 +2121,8 @@ static void register_sunvox_node_mt(lua_State *L) {
 
     lua_pushcclosure(L, sunvox_load, 0);
     lua_setfield(L, -2, "load");
+    lua_pushcclosure(L, sunvox_get_sample_rate, 0);
+    lua_setfield(L, -2, "get_sample_rate");
     lua_pushcclosure(L, sunvox_play, 0);
     lua_setfield(L, -2, "play");
     lua_pushcclosure(L, sunvox_play_from_beginning, 0);
