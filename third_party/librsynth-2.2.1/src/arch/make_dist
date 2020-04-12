@@ -1,0 +1,26 @@
+# -*- Mode: Makefile -*-
+
+# This bit of Makefile only works if GNU make is available
+# The classic make version would have `$(SRCDIR)/getrev $(SRCDIR)`
+# which does not work as it gets evaluated by 'sh' once we have cd'ed
+# elsewhere. GNU make scheme uses := and $(shell...) to evaluate
+# REVISION once at Makefile parse time
+# It is really only needed by developer
+
+DISTNAME  = librsynth
+REVISION := $(shell $(CSRCDIR)/getrev $(CSRCDIR))
+
+dist: distribution ;
+
+distribution: 
+	rm -rf /tmp/$(DISTNAME)-$(REVISION)
+	mkdir /tmp/$(DISTNAME)-$(REVISION)
+	(cd $(SRCDIR); tar cf - `cat MANIFEST` ) | (cd /tmp/$(DISTNAME)-$(REVISION); tar xf - )
+	(cd /tmp; tar cvf - $(DISTNAME)-$(REVISION) ) | gzip -c > $(SRCDIR)/../$(DISTNAME)-$(REVISION).tar.gz
+
+disttest : 
+	rm -rf /tmp/$(DISTNAME)-$(REVISION)
+	mkdir /tmp/$(DISTNAME)-$(REVISION)
+	(cd $(SRCDIR); tar cf - `cat MANIFEST` ) | (cd /tmp/$(DISTNAME)-$(REVISION); tar xf - )
+	(cd /tmp/$(DISTNAME)-$(REVISION); CC=$(CC) configure ; $(MAKE) CC=$(CC) -k check)
+

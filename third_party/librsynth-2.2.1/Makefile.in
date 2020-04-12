@@ -1,0 +1,77 @@
+# $Id: Makefile.in,v 1.5 2002/05/21 10:22:52 moocow Exp $
+
+# HACK! (autoconf 'SET_MAKE' doesn't work!)
+# SET_MAKE="@SET_MAKE@"
+
+
+#---------------------------------------------------------------------
+# Variables
+#---------------------------------------------------------------------
+SRCDIR       = @srcdir@
+CSRCDIR      = @srcdir@/src
+VPATH        = $(SRCDIR):$(CSRCDIR)
+GPATH        = $(VPATH)
+CC           = @CC@
+PKG_NAME     = @PACKAGE_NAME@
+PKG_VERSION  = @PACKAGE_VERSION@
+
+#---------------------------------------------------------------------
+# Rules
+#---------------------------------------------------------------------
+all: ;
+	$(MAKE) -C src all
+
+libs: ; $(MAKE) -C src libs
+
+test: check
+test-static: check-static
+test-dynamic: check-dynamic
+check : ; $(MAKE) -C src check
+check-dynamic : ; $(MAKE) -C src check-dynamic
+check-static : ; $(MAKE) -C src check-dynamic
+
+install: ; $(MAKE) -C src install
+
+uninstall: ; $(MAKE) -C src uninstall
+
+version: ; $(MAKE) -C src version
+
+.PHONY: clean realclean distclean
+
+clean:
+	$(MAKE) -C src clean
+
+realclean: distclean
+
+distclean: clean
+	$(MAKE) -C src distclean
+	rm -f Makefile config.status config.h config.log config.cache
+
+# docs
+README: README.pod
+	pod2text $< > $@
+
+#@
+#make_dist
+#@
+
+# Distribution stuff
+DISTNAME = $(PKG_NAME)-$(PKG_VERSION)
+DIST_SUB = dict doc include include lib src
+
+dist: distribution ;
+
+distribution: 
+	rm -rf /tmp/$(DISTNAME)
+	mkdir /tmp/$(DISTNAME)
+	for f in $(DIST_SUB) ; do mkdir /tmp/$(DISTNAME)/$$f; done
+	(cd $(SRCDIR); tar cf - `cat MANIFEST` ) | (cd /tmp/$(DISTNAME); tar xf - )
+	(cd /tmp; tar cvf - $(DISTNAME) ) | gzip -c > $(SRCDIR)/../$(DISTNAME).tar.gz
+
+disttest : 
+	rm -rf /tmp/$(DISTNAME)
+	mkdir /tmp/$(DISTNAME)
+	for f in $(DIST_SUB) ; do mkdir /tmp/$(DISTNAME)/$$f; done
+	(cd $(SRCDIR); tar cf - `cat MANIFEST` ) | (cd /tmp/$(DISTNAME); tar xf - )
+	(cd /tmp/$(DISTNAME); CC=$(CC) configure ; $(MAKE) CC=$(CC) -k check)
+

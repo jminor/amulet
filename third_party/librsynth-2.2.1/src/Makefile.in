@@ -1,0 +1,316 @@
+# $Id: Makefile.in,v 1.5 2002/05/21 10:04:56 moocow Exp $
+
+#---------------------------------------------------------------------
+# Variables
+#---------------------------------------------------------------------
+SRCDIR       = ..
+CSRCDIR      = .
+VPATH        = $(SRCDIR):$(CSRCDIR):$(TINC_DIR):$(TINC_SUB)
+GPATH        = $(VPATH)
+
+CC           = @CC@
+PREFIX       = @prefix@
+BIN_DIR      = $(PREFIX)/bin
+INC_DIR      = $(PREFIX)/include
+LIB_DIR      = $(PREFIX)/lib
+DICT_DIR     = $(LIB_DIR)/dict
+LDLIBS       = @LIBS@
+XLIBS        = @XLIBS@
+INCLUDE      = @INCLUDE@
+CFLAGS       = $(INCLUDE) @CFLAGS@
+CPPFLAGS     = $(INCLUDE) @CPPFLAGS@ 
+DEFS         = -DDICT_DIR=\"$(DICT_DIR)\"
+PROGS        = @PROGS@
+ADICT        = @ADICT@
+BDICT        = @BDICT@
+DICTS        = @DICTS@
+INSTALL      = @INSTALL@
+INSTALL_PROG = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+MESSAGE      = Hello there
+
+# library stuff : programs & base-target
+LIBTOOL      = @LIBTOOL@
+LIBNAME      = @LIBNAME@
+LIBTARGET    = lib$(LIBNAME).la
+LN_S         = @LN_S@
+
+# package versioning
+PKG_NAME = @PACKAGE_NAME@
+PKG_VERSION = @PACKAGE_VERSION@
+
+# library stuff : versioning
+include $(CSRCDIR)/LIBVERSION
+LIBCURRENT   ?= 0
+LIBREVISION  ?= 0
+LIBAGE       ?= 0
+LIBVERSION_I  = $(LIBCURRENT):$(LIBREVISION):$(LIBAGE)
+LIBVERSION_S  = $(LIBCURRENT).$(LIBAGE).$(LIBREVISION)
+LIBVERSION_S1 = $(LIBCURRENT)
+
+# library stuff : real targets
+LIB_STA = lib$(LIBNAME).a
+LIB_DYN = lib$(LIBNAME).so.$(LIBVERSION_S)
+LIBFILES = $(LIB_STA) $(LIB_DYN)
+LIBLINKS   = lib$(LIBNAME).so.$(LIBCURRENT) \
+	     lib$(LIBNAME)-$(PKG_VERSION).so \
+	     lib$(LIBNAME).so
+LIBTOOL_DIR = $(CSRCDIR)/.libs
+
+# top-level targets
+TBIN_DIR = $(CSRCDIR)
+TLIB_DIR = $(SRCDIR)/lib
+TDICT_DIR = $(SRCDIR)/dict
+TINC_DIR  =  $(SRCDIR)/include
+TINC_SUB  = $(TINC_DIR)/rsynth
+LIBTARGETS = $(addprefix $(TLIB_DIR)/,$(LIBFILES))
+PROGTARGETS = $(addprefix $(TBIN_DIR)/,$(PROGS))
+DICTTARGETS = $(addprefix $(TDICT_DIR)/,$(DICTS))
+
+# top-level header files
+HFILES_TOP = rsynth.h
+HFILES_DIR = rsynth
+HFILES_SUB = ASCII.h acconfig.h darray.h dict.h elements.h file.h getargs.h \
+		h2pw.h holmes.h hplay.h l2u.h main.h nsynth.h phfeat.h phones.def phones.h \
+		phtoelm.h proto.h rstruct.h say.h text.h trie.h useconfig.h
+HSRC_TOP = $(addprefix $(TINC_DIR)/,$(HFILES_TOP))
+HSRC_DIR = $(addprefix $(TINC_DIR)/,$(HFILES_DIR))
+HSRC_SUB = $(addprefix $(HSRC_DIR)/,$(HFILES_SUB))
+
+
+# Rules
+.SUFFIXES: .c .h .o .lo .la .so .a
+
+.c.lo :
+	$(LIBTOOL) $(CC) $(CFLAGS) $(CPPFLAGS) $(DEFS) -c -o $@ $< 
+
+all: $(LIBTARGETS) $(PROGTARGETS) $(DICTTARGETS)
+
+libs: $(LIBTARGETS)
+
+test: check
+test-static: check-static
+test-dynamic: check-dynamic
+
+check : all
+	($(TBIN_DIR)/say -v $(MESSAGE) || \
+	 $(TBIN_DIR)/say-dynamic -v $(MESSAGE) || \
+	 $(TBIN_DIR)/say-static -v $(MESSAGE) || \
+	 $(TBIN_DIR)/nasay $(MESSAGE) )
+
+
+check-dynamic : all
+	($(TBIN_DIR)/say -v $(MESSAGE) || \
+	 $(TBIN_DIR)/say-dynamic -v $(MESSAGE))
+
+check-static : all
+	$(TBIN_DIR)/say-static -v $(MESSAGE)
+
+SAY_OBJS = main.lo $(LIB_OBJS)
+
+LIB_OBJS = rstruct.lo hplay.lo \
+	   say.lo saynum.lo darray.lo ASCII.lo phones.lo text.lo english.lo trie.lo \
+	   phtoelm.lo holmes.lo elements.lo nsynth.lo def_pars.lo l2u.lo aufile.lo \
+	   dict.lo getarg.lo Revision.lo 
+
+
+# Package Versioning
+revision : version
+version : ; rm -f Revision.c ; $(MAKE) Revision.c
+
+Revision.c :
+	echo "char * rsynth_Revision = \"$(PKG_NAME) version: $(PKG_VERSION)\";" > $@
+	echo "static char *ident = \"\@(#)$(PKG_NAME) $(PKG_VERSION) `date +%Y-%m-%d`\"; /* so 'what' works */" >> $@
+
+
+# library tagets
+$(LIBTARGET): $(LIB_OBJS)
+	$(LIBTOOL) $(CC) -o $@ $(CFLAGS) $(LDFLAGS) \
+	  -rpath $(LIB_DIR) \
+	  -version-info $(LIBVERSION_I) \
+	  $(LIB_OBJS) $(LDLIBS)
+
+$(LIBTOOL_DIR)/$(LIB_STA): $(LIBTARGET) ;
+
+$(LIBTOOL_DIR)/$(LIB_DYN): $(LIBTARGET) ;
+
+$(TLIB_DIR)/$(LIB_STA): $(LIBTOOL_DIR)/$(LIB_STA)
+	$(INSTALL_DATA) $^ $(TLIB_DIR)
+
+$(TLIB_DIR)/$(LIB_DYN): $(LIBTOOL_DIR)/$(LIB_DYN)
+	$(INSTALL_DATA) $^ $(TLIB_DIR)
+
+
+# statically linked executable
+$(TBIN_DIR)/say-static : $(SAY_OBJS)
+	$(LIBTOOL) $(CC) -o $@ $(LDFLAGS) $(SAY_OBJS) $(LDLIBS)
+
+# dynamically linked executable
+$(TBIN_DIR)/say-dynamic : main.lo .libs/$(LIB_DYN)
+	$(LIBTOOL) $(CC) -o $@ $(LDFLAGS) main.lo $(LDLIBS) -L.libs -l$(LIBNAME)
+
+# dynamically linked executable, alternate name
+$(TBIN_DIR)/say : main.lo .libs/$(LIB_DYN)
+	$(LIBTOOL) $(CC) -o $@ $(LDFLAGS) main.lo $(LDLIBS) -L.libs -l$(LIBNAME)
+
+
+# non-linux: probably won't work
+$(TBIN_DIR)/nasay : $(SAY_OBJS) naplay.lo 
+	$(LIBTOOL) $(CC) -o $@ $(LDFLAGS) $(SAY_OBJS) naplay.lo $(XLIBS) $(LDLIBS)
+
+# dictionary executables
+$(TBIN_DIR)/mkdictdb : mkdictdb.lo trie.lo phones.lo 
+	$(LIBTOOL) $(CC) -o $@ $(LDFLAGS) $^ $(LDLIBS)
+
+$(TBIN_DIR)/dlookup  : dlookup.lo phones.lo dict.lo getarg.lo  
+	$(LIBTOOL) $(CC) -o $@ $(LDFLAGS) $^ $(LDLIBS)
+
+$(TBIN_DIR)/ssay : $(SAY_OBJS) hplay.lo 
+	$(LIBTOOL) $(SE_HOME)/sentinel $(CC) -o $@ $(LDFLAGS) $(SAY_OBJS) $^ $(LDLIBS)
+
+# cleanup
+.PHONY: clean distclean maintainerclean
+
+clean:
+	rm -f $(PROGTARGETS) $(DICTTARGETS) *.o tmp.par core *~ *% ~* ,* .e[cks]1
+	rm -rf $(LIBTARGETS) .libs *.l[oa]
+
+realclean: distclean
+
+distclean : clean
+	rm -f Makefile config.status $(TINC_SUB)/config.h config.log config.cache hplay.c 
+
+# ???
+hplay.lo : hplay.c $(TINC_SUB)/proto.h $(TINC_SUB)/getargs.h $(TINC_SUB)/hplay.h 
+
+# Dictionaries
+$(TDICT_DIR)/aDict.db : $(ADICT) mkdictdb
+	$(TBIN_DIR)/mkdictdb $(ADICT) $(TDICT_DIR)/aDict.db
+
+$(TDICT_DIR)/bDict.db : $(BDICT) mkdictdb
+	$(TBIN_DIR)/mkdictdb $(BDICT) $(TDICT_DIR)/bDict.db
+
+
+# install targets
+install : install_bin install_libs install_dicts install_inc ;
+
+install_bin: $(PROGTARGETS)
+	for f in $^; do \
+	  $(INSTALL_PROG) $$f $(BIN_DIR) ;\
+	done
+
+install_dicts: $(DICTTARGETS)
+ifneq "$(strip $(DICTS))" ""
+	$(INSTALL) -d $(DICT_DIR)
+	for f in $(DICTTARGETS); do \
+	   $(INSTALL_DATA) $$f $(DICT_DIR) ;\
+	done
+else
+	@echo -e "\n  *\n  * No dictionaries specified to install; skipping.\n  *\n"
+endif
+
+install_libs : $(LIBTARGETS)
+	$(INSTALL) -d $(LIB_DIR)
+	for f in $^ ; do \
+	  $(INSTALL_DATA) $$f $(LIB_DIR); \
+	done
+	for f in $(LIBLINKS) ; do \
+	  rm -f $(LIB_DIR)/$$f ; \
+	  ( cd $(LIB_DIR) && $(LN_S) $(LIB_DYN) $$f ) ;\
+	done
+
+install_inc : $(HSRC_TOP) $(HSRC_SUB)
+	$(INSTALL) -d $(INC_DIR)
+	for f in $(HSRC_TOP) ; do \
+	  $(INSTALL_DATA) $$f $(INC_DIR) ;\
+	done
+	$(INSTALL) -d $(INC_DIR)/$(HFILES_DIR)
+	for f in $(HSRC_SUB) ; do \
+	  $(INSTALL_DATA) $$f $(INC_DIR)/$(HFILES_DIR) ;\
+	done
+
+
+# UNinstall targets
+uninstall : uninstall_bin uninstall_libs uninstall_dicts uninstall_inc ;
+
+uninstall_bin: ;
+	for f in $(PROGS); do \
+	  rm -f $(BIN_DIR)/$$f ;\
+	done
+
+uninstall_dicts: ;
+ifneq "$(strip $(DICTS))" ""
+	for f in $(DICTS); do \
+	   rm -f $(DICT_DIR)/$$f ;\
+	done
+endif
+
+uninstall_libs : ;
+	for f in $(LIBFILES) $(LIBLINKS) ; do \
+	  rm -f $(LIB_DIR)/$$f ;\
+	done
+
+uninstall_inc : ;
+	for f in $(HFILES_TOP) ; do \
+	  rm -f $(INC_DIR)/$$f ; \
+	done
+	for f in $(HFILES_SUB) ; do \
+	  rm -f $(INC_DIR)/$(HFILES_DIR)/$$f ;\
+	done
+
+
+#@
+#make_dist
+#@
+
+# Now some - semi-automatically generated dependancies
+#MM
+rstruct.lo : rstruct.c $(TINC_SUB)/rstruct.h
+ASCII.lo : ASCII.c $(TINC_SUB)/ASCII.h 
+Revision.lo : Revision.c 
+au.lo : au.c $(TINC_SUB)/proto.h $(TINC_SUB)/au.h 
+aufile.lo : aufile.c $(TINC_SUB)/proto.h $(TINC_SUB)/getargs.h $(TINC_SUB)/l2u.h \
+	    $(TINC_SUB)/hplay.h $(TINC_SUB)/file.h  $(TINC_SUB)/rstruct.h
+darray.lo : darray.c $(TINC_SUB)/proto.h $(TINC_SUB)/darray.h 
+def_pars.lo : def_pars.c $(TINC_SUB)/proto.h $(TINC_SUB)/getargs.h $(TINC_SUB)/nsynth.h \
+		$(TINC_SUB)/hplay.h pars.def $(TINC_SUB)/rstruct.h
+dict.lo : dict.c $(TINC_SUB)/proto.h $(TINC_SUB)/phones.h phones.def $(TINC_SUB)/dict.h \
+		$(TINC_SUB)/getargs.h $(TINC_SUB)/rstruct.h
+dlookup.lo : dlookup.c $(TINC_SUB)/proto.h $(TINC_SUB)/dict.h $(TINC_SUB)/phones.h phones.def \
+		$(TINC_SUB)/getargs.h 
+elements.lo : elements.c $(TINC_SUB)/elements.h $(TINC_SUB)/phfeat.h Elements.def 
+english.lo : english.c 
+getarg.lo : getarg.c $(TINC_SUB)/proto.h $(TINC_SUB)/getargs.h 
+holmes.lo : holmes.c $(TINC_SUB)/proto.h $(TINC_SUB)/nsynth.h $(TINC_SUB)/elements.h \
+		$(TINC_SUB)/darray.h $(TINC_SUB)/holmes.h $(TINC_SUB)/phfeat.h \
+		$(TINC_SUB)/getargs.h $(TINC_SUB)/rstruct.h
+klatt.lo : klatt.c $(TINC_SUB)/proto.h $(TINC_SUB)/parwave.h $(TINC_SUB)/rstruct.h
+l2u.lo : l2u.c 
+mkdictdb.lo : mkdictdb.c $(TINC_SUB)/proto.h $(TINC_SUB)/trie.h $(TINC_SUB)/darray.h \
+		$(TINC_SUB)/phones.h phones.def 
+naplay.lo : naplay.c $(TINC_SUB)/proto.h $(TINC_SUB)/getargs.h $(TINC_SUB)/hplay.h 
+netplay.lo : netplay.c $(TINC_SUB)/proto.h $(TINC_SUB)/getargs.h $(TINC_SUB)/hplay.h 
+nsynth.lo : nsynth.c $(TINC_SUB)/proto.h $(TINC_SUB)/nsynth.h \
+	    $(TINC_SUB)/rstruct.h
+parwave.lo : parwave.c $(TINC_SUB)/proto.h $(TINC_SUB)/parwave.h 
+phones.lo : phones.c $(TINC_SUB)/phones.h phones.def  \
+            $(TINC_SUB)/rstruct.h
+phtoelm.lo : phtoelm.c $(TINC_SUB)/proto.h $(TINC_SUB)/elements.h $(TINC_SUB)/phfeat.h \
+		$(TINC_SUB)/darray.h $(TINC_SUB)/trie.h $(TINC_SUB)/phtoelm.h \
+		$(TINC_SUB)/hplay.h $(TINC_SUB)/holmes.h $(TINC_SUB)/nsynth.h phtoelm.def 
+plot.lo : plot.c $(TINC_SUB)/proto.h $(TINC_SUB)/elements.h 
+say.lo : say.c $(TINC_SUB)/proto.h $(TINC_SUB)/nsynth.h $(TINC_SUB)/hplay.h $(TINC_SUB)/dict.h \
+		$(TINC_SUB)/ASCII.h $(TINC_SUB)/darray.h $(TINC_SUB)/holmes.h $(TINC_SUB)/phtoelm.h \
+		$(TINC_SUB)/text.h $(TINC_SUB)/getargs.h $(TINC_SUB)/phones.h phones.def \
+		$(TINC_SUB)/file.h $(TINC_SUB)/say.h $(TINC_SUB)/rstruct.h
+main.lo : main.c say.c $(TINC_SUB)/proto.h $(TINC_SUB)/nsynth.h $(TINC_SUB)/hplay.h $(TINC_SUB)/dict.h \
+		$(TINC_SUB)/ASCII.h $(TINC_SUB)/darray.h $(TINC_SUB)/holmes.h $(TINC_SUB)/phtoelm.h \
+		$(TINC_SUB)/text.h $(TINC_SUB)/getargs.h $(TINC_SUB)/phones.h phones.def $(TINC_SUB)/file.h \
+		$(TINC_SUB)/say.h $(TINC_SUB)/rstruct.h
+saynum.lo : saynum.c $(TINC_SUB)/proto.h $(TINC_SUB)/darray.h $(TINC_SUB)/say.h 
+text.lo : text.c $(TINC_SUB)/proto.h $(TINC_SUB)/darray.h $(TINC_SUB)/phtoelm.h $(TINC_SUB)/text.h \
+		$(TINC_SUB)/say.h 
+tidy_elm.lo : tidy_elm.c $(TINC_SUB)/proto.h $(TINC_SUB)/darray.h $(TINC_SUB)/elements.h \
+		$(TINC_SUB)/parwave.h $(TINC_SUB)/phfeat.h $(TINC_SUB)/phtoelm.h \
+		phonemes.def 
+trie.lo : trie.c $(TINC_SUB)/proto.h $(TINC_SUB)/trie.h 

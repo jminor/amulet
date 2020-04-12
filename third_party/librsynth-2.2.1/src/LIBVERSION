@@ -1,0 +1,6 @@
+# -*- Mode: Makefile -*-
+
+# version information for libtool
+LIBCURRENT = 2
+LIBREVISION = 2
+LIBAGE = 0
