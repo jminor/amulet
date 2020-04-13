@@ -31,30 +31,30 @@ EXTRA_PREREQS =
 SDL_PREBUILT = $(BUILD_LIB_DIR)/sdl-prebuilt.date
 
 ifeq ($(TARGET_PLATFORM),html)
-  AM_DEPS = $(LUAVM) stb kissfft tinymt
+  AM_DEPS = $(LUAVM) stb kissfft tinymt rsynth
   AMULET = $(BUILD_BIN_DIR)/amulet.html
 else ifdef IOS
-  AM_DEPS = $(LUAVM) stb kissfft tinymt
+  AM_DEPS = $(LUAVM) stb kissfft tinymt rsynth
   ifndef NO_METAL
     AM_DEPS += glslopt
     AM_DEFS += AM_USE_METAL
   endif
 else ifeq ($(TARGET_PLATFORM),msvc32)
-  AM_DEPS = $(LUAVM) stb kissfft tinymt ft2 angle $(STEAMWORKS_DEP)
+  AM_DEPS = $(LUAVM) stb kissfft tinymt rsynth ft2 angle $(STEAMWORKS_DEP)
   AM_DEFS += AM_ANGLE_TRANSLATE_GL
   EXTRA_PREREQS = $(SDL_PREBUILT) $(ANGLE_WIN_PREBUILT) $(SIMPLEGLOB_H)
 else ifeq ($(TARGET_PLATFORM),msvc64)
-  AM_DEPS = $(LUAVM) stb kissfft tinymt ft2 angle $(STEAMWORKS_DEP)
+  AM_DEPS = $(LUAVM) stb kissfft tinymt rsynth ft2 angle $(STEAMWORKS_DEP)
   AM_DEFS += AM_ANGLE_TRANSLATE_GL
   EXTRA_PREREQS = $(SDL_PREBUILT) $(ANGLE_WIN_PREBUILT) $(SIMPLEGLOB_H)
 else ifdef ANDROID
-  AM_DEPS = $(LUAVM) stb kissfft tinymt
+  AM_DEPS = $(LUAVM) stb kissfft tinymt rsynth
   AMULET = $(BUILD_BIN_DIR)/libamulet.so
 else ifeq ($(TARGET_PLATFORM),mingw32)
-  AM_DEPS = $(LUAVM) stb kissfft tinymt ft2
+  AM_DEPS = $(LUAVM) stb kissfft tinymt rsynth ft2
   EXTRA_PREREQS = $(SDL_PREBUILT) $(ANGLE_WIN_PREBUILT) $(SIMPLEGLOB_H)
 else ifeq ($(TARGET_PLATFORM),osx)
-  AM_DEPS = $(LUAVM) sdl angle stb kissfft tinymt ft2
+  AM_DEPS = $(LUAVM) sdl angle stb kissfft tinymt rsynth ft2
   ifndef NO_METAL
     AM_DEPS += glslopt
     AM_DEFS += AM_USE_METAL
@@ -63,7 +63,7 @@ else ifeq ($(TARGET_PLATFORM),osx)
   endif
   EXTRA_PREREQS = $(SIMPLEGLOB_H) $(STEAMWORKS_LIB)
 else
-  AM_DEPS = $(LUAVM) sdl angle stb kissfft tinymt ft2
+  AM_DEPS = $(LUAVM) sdl angle stb kissfft tinymt rsynth ft2
   AM_DEFS += AM_ANGLE_TRANSLATE_GL
   EXTRA_PREREQS = $(SIMPLEGLOB_H) $(STEAMWORKS_LIB)
 endif
@@ -88,7 +88,7 @@ AM_INCLUDE_FLAGS = $(INCLUDE_OPT)$(BUILD_INC_DIR) \
 
 AM_DEF_FLAGS=$(patsubst %,$(DEF_OPT)%,$(AM_DEFS))
 
-AM_CFLAGS = $(AM_DEF_FLAGS) $(LUA_CFLAGS) $(XCFLAGS) $(AM_INCLUDE_FLAGS) $(COMMON_CFLAGS) $(NO_STRICT_ALIAS_OPT)
+AM_CFLAGS = $(AM_DEF_FLAGS) $(LUA_CFLAGS) $(XCFLAGS) $(AM_INCLUDE_FLAGS) $(COMMON_CFLAGS) $(NO_STRICT_ALIAS_OPT) -g
 AM_LDFLAGS = $(GRADE_LDFLAGS) $(DEP_ALIBS) $(XLDFLAGS) $(LDFLAGS)
 
 EXAMPLE_FILES := $(wildcard examples/*.lua)
@@ -252,6 +252,15 @@ $(STB_ALIB): | $(BUILD_LIB_DIR) $(BUILD_INC_DIR)
 	cp $(STB_DIR)/*.h $(BUILD_INC_DIR)/
 	cp $(STB_DIR)/*.c $(BUILD_INC_DIR)/
 	cp $(STB_DIR)/libstb$(ALIB_EXT) $@
+
+$(RSYNTH_ALIB): | $(BUILD_LIB_DIR) $(BUILD_INC_DIR)
+	cd $(RSYNTH_DIR) && $(MAKE) clean
+	cd $(RSYNTH_DIR) && $(MAKE) all
+	cp $(RSYNTH_DIR)/include/*.h $(BUILD_INC_DIR)/
+	mkdir -p $(BUILD_INC_DIR)/rsynth
+	cp $(RSYNTH_DIR)/include/rsynth/*.h $(BUILD_INC_DIR)/rsynth
+	cp $(RSYNTH_DIR)/include/rsynth/*.def $(BUILD_INC_DIR)/rsynth
+	cp $(RSYNTH_DIR)/librsynth$(ALIB_EXT) $@
 
 $(GLSLOPT_ALIB): | $(BUILD_LIB_DIR) $(BUILD_INC_DIR)
 	cd $(GLSLOPT_DIR) && $(MAKE) clean

@@ -68,6 +68,7 @@ am_engine *am_init_engine(bool worker, int argc, char** argv) {
         am_open_renderer_module(L);
         am_open_audio_module(L);
         am_open_sfxr_module(L);
+        am_open_rsynth_module(L);
 #if defined(AM_BACKEND_IOS)
         am_open_ios_module(L);
 #elif defined(AM_BACKEND_ANDROID)

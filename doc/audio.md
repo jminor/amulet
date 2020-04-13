@@ -174,6 +174,12 @@ Field                Default value     Notes
 or a numeric seed. Use the sfxr example
 in the [online editor](http://www.amulet.xyz/editor.html) to generate seeds.
 
+### am.speech_synth(text) {#am.speech_synth .func-def}
+
+Returns an audio buffer containing synthesized speech.
+
+`text` is a string specifying the words to say.
+
 ## Audio graphs
 
 TODO

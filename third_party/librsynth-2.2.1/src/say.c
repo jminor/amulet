@@ -92,7 +92,8 @@ int n;
 darray_ptr phone;
 {
  unsigned nph = 0;
- fprintf(stderr, "Spelling '%.*s'\n", n, word);
+ if (synth->verbose)
+   fprintf(stderr, "Spelling '%.*s'\n", n, word);
  while (n-- > 0)
   {
    nph += xlate_string(synth, ASCII[*word++ & 0x7F], phone);

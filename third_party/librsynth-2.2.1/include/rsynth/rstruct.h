@@ -265,7 +265,7 @@ extern int rsynth_stop PROTO((rsynth_synth *synth));
 /* rsynth_sync(synth)
  *   + syncs a running synth, return is boolean
  */
-extern int rsynth_stop PROTO((rsynth_synth *synth));
+extern int rsynth_sync PROTO((rsynth_synth *synth));
 
 
 //-- audio

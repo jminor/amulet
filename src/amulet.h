@@ -162,6 +162,7 @@ extern "C" {
 #include "am_export.h"
 #include "am_rand.h"
 #include "am_sfxr.h"
+#include "am_rsynth.h"
 #include "am_glob.h"
 #include "am_i18n.h"
 #include "am_net.h"

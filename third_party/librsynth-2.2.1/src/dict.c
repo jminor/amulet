@@ -8,12 +8,12 @@
 //char **dialect = ph_am;
 
 
+#include "rstruct.h"
+
 #ifdef HAVE_LIBGDBM
 #include <useconfig.h>
 #include <ctype.h>
 #include <gdbm.h>
-
-#include "rstruct.h"
 
 #include "dict.h"
 #include "getargs.h"
@@ -195,6 +195,24 @@ rsynth_dict *rsdict;
   gdbm_close((GDBM_FILE) rsdict->dict);
 }
 
+/*------------------------------------------------------------------------
+ * wrappers
+ *------------------------------------------------------------------------*/
+int
+dict_init(synth, argc, argv)
+rsynth_synth *synth;
+int argc;
+char *argv[];
+{
+  return rsdict_init(&(synth->rsdict), &(synth->help_only), argc, argv);
+}
+
+int rsynth_start_dict(synth)
+     rsynth_synth *synth;
+{
+  return rsdict_start_dict(&(synth->rsdict));
+}
+
 #else
 
 unsigned char * dict_find(rsdict, s, n)
@@ -216,7 +234,12 @@ char *argv[];
 void dict_term(rsdict)
 rsynth_dict *rsdict;
 {
+}
 
+int rsynth_start_dict(synth)
+     rsynth_synth *synth;
+{
+  return 1;
 }
 
 int rsynth_stop_dict(synth)
@@ -225,31 +248,4 @@ rsynth_synth *synth;
   return 1;
 }
 
-int rsdict_stop_dict(rsdict)
-     rsynth_dict *rsdict;
-{
-  return 1;
-}
-
-
 #endif
-
-
-
-/*------------------------------------------------------------------------
- * wrappers
- *------------------------------------------------------------------------*/
-int
-dict_init(synth, argc, argv)
-rsynth_synth *synth;
-int argc;
-char *argv[];
-{
-  return rsdict_init(&(synth->rsdict), &(synth->help_only), argc, argv);
-}
-
-int rsynth_start_dict(synth)
-     rsynth_synth *synth;
-{
-  return rsdict_start_dict(&(synth->rsdict));
-}

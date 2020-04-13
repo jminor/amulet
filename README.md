@@ -102,6 +102,7 @@ Amulet uses or borrows code and ideas from the following projects:
 - [SimpleGlob](https://github.com/brofield/simpleopt)
 - [TinyMT](https://github.com/MersenneTwister-Lab/TinyMT)
 - [sfxr](http://www.drpetter.se/project_sfxr.html)
+- [librsynth](http://kaskade.dwds.de/~moocow/mirror/projects/spsyn/index.html)
 - [glsl-optimizer](https://github.com/aras-p/glsl-optimizer)
 
 The HTML editor uses code and ideas from:

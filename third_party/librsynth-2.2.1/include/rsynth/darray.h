@@ -2,6 +2,9 @@
 */
 #if !defined(DARRAY_H)
 #define DARRAY_H
+
+#include <stdlib.h>
+
 typedef struct
  {char     *data;          /* the items */
   unsigned items;          /* number of slots used */
